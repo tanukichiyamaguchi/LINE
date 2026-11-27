@@ -169,7 +169,9 @@ class OwnerAssistant:
         if message.get("type") != "text":
             # 文字以外（スタンプなど）は回答の対象外。通知待ちがあれば知らせる
             if notices:
-                await self._send([self._notice_message(notices)], reply_token, deadline)
+                sent = await self._send([self._notice_message(notices)], reply_token, deadline)
+                if sent == "failed":
+                    return "notices_failed"  # 届けられなかった通知は残し、次に話しかけられたときに知らせる
                 await self._clear_notices(notices)
                 return "notices_only"
             return "ignored"
@@ -182,15 +184,17 @@ class OwnerAssistant:
                 remaining = deadline - time.time() - REPLY_SAFETY_SECONDS
                 try:
                     result = await asyncio.wait_for(asyncio.shield(work), timeout=max(0.0, remaining))
-                    await self._send([self._notice_message(notices), *result], reply_token, deadline)
+                    notices_sent = await self._send([self._notice_message(notices), *result], reply_token, deadline)
                 except TimeoutError:
                     # 期限内に回答が間に合わない：通知は応答メッセージで先に送り、回答は後でプッシュする
-                    await self._send([self._notice_message(notices),
-                                      OutMessage("（ご依頼の内容をまとめています。できあがり次第お送りします）")],
-                                     reply_token, deadline)
+                    notices_sent = await self._send(
+                        [self._notice_message(notices),
+                         OutMessage("（ご依頼の内容をまとめています。できあがり次第お送りします）")],
+                        reply_token, deadline)
                     result = await work
                     await self._send(result, None, deadline)
-                await self._clear_notices(notices)
+                if notices_sent != "failed":
+                    await self._clear_notices(notices)  # 届けられなかった通知は残し、次の機会に知らせる
             else:
                 result = await work
                 await self._send(result, reply_token, deadline)

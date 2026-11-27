@@ -74,5 +74,9 @@ def owner_text_event(text: str, ts: int, msg_id: str = "500") -> dict:
     return text_event(msg_id, text, ts, source(kind="user", user_id=OWNER_ID))
 
 
-def make_ingestor(settings, store, line, transcriber) -> Ingestor:
-    return Ingestor(settings, store, line, GroupRegistry(store, line), transcriber)
+# 記録処理が動いている「今」（テストの結果が実行日に左右されないよう固定する）
+TEST_NOW = datetime(2026, 11, 16, 12, 0, tzinfo=JST)
+
+
+def make_ingestor(settings, store, line, transcriber, now: datetime = TEST_NOW) -> Ingestor:
+    return Ingestor(settings, store, line, GroupRegistry(store, line), transcriber, clock=lambda: now)

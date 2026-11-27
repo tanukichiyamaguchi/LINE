@@ -1,13 +1,17 @@
 """送信取消のテスト：該当行を「（送信取消）」に置き換え、添付ノートがあれば削除する。"""
 
+from datetime import datetime
+
 import pytest
 
 from app.logformat import mark_unsent, parse_entry
+from app.timeutil import JST
 
 from .conftest import GROUP_ID
 from .helpers import MEMBER_ID, file_event, image_event, make_ingestor, ms, source, text_event, unsend_event
 
 LOG = "LINEログ/家族グループ/2026-11-14.md"
+NEXT_LOG = "LINEログ/家族グループ/2026-11-15.md"
 
 
 def test_mark_unsent_replaces_line_and_returns_attachments():
@@ -107,6 +111,39 @@ async def test_unsend_before_message_is_recorded_leaves_tombstone(ing, github):
     status = await ing.handle({"kind": "event", "event": text_event("51", "見られたくない", ms(2026, 11, 14, 12, 59))})
     assert status == "duplicate"
     assert "見られたくない" not in github.text(LOG)
+
+
+@pytest.mark.anyio
+async def test_unsend_after_midnight_processed_before_message_keeps_content_out(ing, github):
+    # 23:59 の投稿を翌日 0:03 に取り消し、元の投稿の記録処理が取り消しより後になった場合
+    status = await ing.handle({"kind": "event", "event": unsend_event("52", ms(2026, 11, 15, 0, 3))})
+    assert status == "unsent_not_found"
+    assert "- 00:03 山田：（送信取消） ^m52" in github.text(NEXT_LOG)
+    status = await ing.handle({"kind": "event", "event": text_event("52", "見られたくない", ms(2026, 11, 14, 23, 59))})
+    assert status == "duplicate"
+    assert LOG not in github.files  # 前日のログに取り消した内容を書かない
+    assert "見られたくない" not in github.text(NEXT_LOG)
+
+
+@pytest.mark.anyio
+async def test_unsend_after_midnight_processed_before_image_skips_transcription(ing, github, line, transcriber):
+    line.contents["53"] = b"img"
+    await ing.handle({"kind": "event", "event": unsend_event("53", ms(2026, 11, 15, 0, 3))})
+    status = await ing.handle({"kind": "event", "event": image_event("53", ms(2026, 11, 14, 23, 59))})
+    assert status == "duplicate"
+    assert transcriber.image_calls == 0  # テキスト化しない
+    assert not any(p.startswith("LINEログ/添付/") for p in github.files)  # 添付ノートも作らない
+
+
+@pytest.mark.anyio
+async def test_message_recorded_on_its_own_day_does_not_read_later_days(settings, store, github, line, transcriber):
+    # 届いた日のうちに記録される通常の場合は、翌日以降のログを読みにいかない（GitHub への問い合わせを増やさない）
+    line.group_names[GROUP_ID] = "家族グループ"
+    line.names[MEMBER_ID] = "山田"
+    ing = make_ingestor(settings, store, line, transcriber, now=datetime(2026, 11, 14, 23, 59, 30, tzinfo=JST))
+    status = await ing.handle({"kind": "event", "event": text_event("54", "こんばんは", ms(2026, 11, 14, 23, 59))})
+    assert status == "inserted"
+    assert not any(p.startswith("LINEログ/家族グループ/2026-11-15") for p in github.reads)
 
 
 @pytest.mark.anyio
