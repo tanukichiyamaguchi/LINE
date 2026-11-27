@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -27,7 +28,7 @@ from .logformat import (
     upsert_entry,
 )
 from .paths import ChatRef, attachment_note_path
-from .timeutil import fmt_date, fmt_hhmm, from_epoch_ms
+from .timeutil import fmt_date, fmt_hhmm, from_epoch_ms, now_jst
 from .transcribe import ImageText, Transcriber, classify_failure
 
 log = logging.getLogger(__name__)
@@ -108,12 +109,14 @@ def _alias(text: str) -> str:
 
 class Ingestor:
     def __init__(self, settings: Settings, store: GitHubStore, line: LineClient,
-                 groups: GroupRegistry, transcriber: Transcriber) -> None:
+                 groups: GroupRegistry, transcriber: Transcriber,
+                 clock: Callable[[], datetime] = now_jst) -> None:
         self.settings = settings
         self.store = store
         self.line = line
         self.groups = groups
         self.transcriber = transcriber
+        self.clock = clock
 
     # ---------------------------------------------------------------- 入口
     async def handle(self, payload: dict) -> str:
@@ -177,6 +180,8 @@ class Ingestor:
         existing = find_entry(current.text if current else None, msg_id)
         if existing is not None and not existing.is_failure:
             return "duplicate"  # 同じメッセージIDが既に記録されている
+        if existing is None and await self._found_on_later_day(chat, dt, msg_id):
+            return "duplicate"  # 先に処理された送信取消・編集の行が、翌日以降のログにある
 
         sender = await self.line.display_name(event.get("source") or {})
         body, failure = await self._message_body(msg, chat, sender, dt)
@@ -185,6 +190,17 @@ class Ingestor:
         if failure is not None and not failure.permanent and status != "duplicate":
             raise RetryLater(failure.reason)
         return status
+
+    async def _found_on_later_day(self, chat: ChatRef, dt: datetime, msg_id: str) -> bool:
+        """元のメッセージより先に送信取消・編集が処理されると、その行は取消・編集の日付のログに書かれる。
+        日付をまたいでいた場合に備えて、元のメッセージの翌日から今日まで（最大 LOOKBACK_DAYS 日）のログも確かめる。
+        メッセージが届いた日のうちに記録される通常の場合は、追加の読み込みは起きない。"""
+        days = min(LOOKBACK_DAYS, (self.clock().date() - dt.date()).days)
+        for k in range(1, days + 1):
+            current = await self.store.get(chat.daily_log_path(fmt_date(dt + timedelta(days=k))))
+            if find_entry(current.text if current else None, msg_id) is not None:
+                return True
+        return False
 
     async def _message_body(self, msg: dict, chat: ChatRef, sender: str, dt: datetime) -> tuple[str, Failure | None]:
         mtype = msg.get("type")

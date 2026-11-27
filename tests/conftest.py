@@ -81,6 +81,7 @@ class FakeGitHub:
         self.files: dict[str, bytes] = {}
         self.forced_put_status: list[int] = []  # 次の PUT で返すステータス（競合の再現用）
         self.writes: list[tuple[str, str]] = []  # (メソッド, パス)
+        self.reads: list[str] = []  # GET したファイルのパス（読み込み回数の確認用）
 
     @staticmethod
     def sha(data: bytes) -> str:
@@ -108,6 +109,7 @@ class FakeGitHub:
             return httpx2.Response(404, json={"message": "Not Found"})
         fpath = path[len(contents):]
         if request.method == "GET":
+            self.reads.append(fpath)
             data = self.files.get(fpath)
             if data is None:
                 return httpx2.Response(404, json={"message": "Not Found"})

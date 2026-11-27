@@ -306,3 +306,53 @@ async def test_sticker_from_owner_delivers_notices_only(make_owner, line, github
     assert texts(line.replies[-1][1]) == ["📢 お知らせ\n・お知らせです"]
     ev2 = dict(ev, replyToken="rt2")
     assert await owner.handle(ev2) == "ignored"
+
+
+def _line_is_down(line):
+    """応答メッセージもプッシュも失敗する状態（例：返信の期限切れと、月の通数の上限）。"""
+    from app.line_api import LineApiError
+
+    line.reply_error = LineApiError("Invalid reply token", 400)
+    line.push_error = LineApiError("You have reached your monthly limit.", 429)
+
+
+@pytest.mark.anyio
+async def test_notices_are_kept_when_delivery_fails(make_owner, line, github):
+    from .helpers import base_event
+
+    github.put_text(NOTICES_FILE, add_notice(None, "k", "R1 を送れませんでした（残り0通）", "2026-11-14 09:00"))
+    owner = make_owner()
+    _line_is_down(line)
+    sticker = base_event("message", now_ms(), source(kind="user", user_id=OWNER_ID), replyToken="rt",
+                         message={"type": "sticker", "id": "9", "packageId": "1", "stickerId": "1"})
+    assert await owner.handle(sticker) == "notices_failed"
+    await owner.handle(owner_text_event("質問", now_ms()))
+    assert line.replies == [] and line.pushes == []
+    assert len(list_notices(github.text(NOTICES_FILE))) == 1  # 届けられなかった通知は消さない
+    # LINE 側が回復したら、次に話しかけたときに届けてから消す
+    line.reply_error = line.push_error = None
+    await owner.handle(owner_text_event("もう一度", now_ms(), msg_id="501"))
+    assert line.replies[-1][1][0].text.startswith("📢 お知らせ\n・R1 を送れませんでした")
+    assert list_notices(github.text(NOTICES_FILE)) == []
+
+
+@pytest.mark.anyio
+async def test_notices_are_kept_when_slow_answer_delivery_fails(make_owner, line, github):
+    github.put_text(NOTICES_FILE, add_notice(None, "k", "通数が足りません", "2026-11-14 09:00"))
+    owner = make_owner(reply_deadline_seconds=3)
+    owner.agent = FakeAgent(delay=1.5)
+    _line_is_down(line)
+    await owner.handle(owner_text_event("時間のかかる質問", now_ms()))
+    assert len(list_notices(github.text(NOTICES_FILE))) == 1
+
+
+@pytest.mark.anyio
+async def test_notices_delivered_by_push_fallback_are_cleared(make_owner, line, github):
+    from app.line_api import LineApiError
+
+    github.put_text(NOTICES_FILE, add_notice(None, "k", "通数が足りません", "2026-11-14 09:00"))
+    owner = make_owner()
+    line.reply_error = LineApiError("Invalid reply token", 400)
+    await owner.handle(owner_text_event("質問", now_ms()))
+    assert line.pushes[-1][1][0].text.startswith("📢 お知らせ\n・通数が足りません")
+    assert list_notices(github.text(NOTICES_FILE)) == []

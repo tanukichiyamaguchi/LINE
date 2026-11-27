@@ -210,6 +210,15 @@ async def test_edit_of_unrecorded_message_is_inserted(ing, github):
     assert await handle(ing, text_event("22", "編集前", ms(2026, 11, 14, 9, 6))) == "duplicate"
 
 
+@pytest.mark.anyio
+async def test_edit_after_midnight_processed_before_message_is_not_duplicated(ing, github):
+    # 23:59 の投稿を翌日 0:03 に編集し、元の投稿の記録処理が編集より後になった場合
+    assert await handle(ing, edit_event("23", "編集後", ms(2026, 11, 15, 0, 3))) == "edited_not_found"
+    assert await handle(ing, text_event("23", "編集前", ms(2026, 11, 14, 23, 59))) == "duplicate"
+    assert LOG not in github.files  # 前日のログに編集前の本文を二重に書かない
+    assert github.text("LINEログ/家族グループ/2026-11-15.md").count("^m23") == 1
+
+
 # ---------------------------------------------------------------- ボット自身の送信
 @pytest.mark.anyio
 async def test_bot_message_is_logged(ing, github):
