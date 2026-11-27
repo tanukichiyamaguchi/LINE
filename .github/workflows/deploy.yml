@@ -153,7 +153,7 @@ jobs:
             SCHEDULER_INVOKER_SA=${{ vars.SCHEDULER_INVOKER_SA }}
             INGEST_QUEUE=line-ingest
             ASK_QUEUE=line-ask
-            CLAUDE_MODEL_TRANSCRIBE=${{ vars.CLAUDE_MODEL_TRANSCRIBE || 'claude-opus-5-5' }}
+            CLAUDE_MODEL_TRANSCRIBE=${{ vars.CLAUDE_MODEL_TRANSCRIBE || 'claude-sonnet-5-5' }}
             CLAUDE_MODEL_ANSWER=${{ vars.CLAUDE_MODEL_ANSWER || 'claude-opus-5-5' }}
             CLAUDE_EFFORT_TRANSCRIBE=${{ vars.CLAUDE_EFFORT_TRANSCRIBE || 'medium' }}
             CLAUDE_EFFORT_ANSWER=${{ vars.CLAUDE_EFFORT_ANSWER || 'medium' }}

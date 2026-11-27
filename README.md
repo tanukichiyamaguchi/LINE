@@ -244,15 +244,19 @@ summary: ["BBQ用品の見積書", "合計12,345円"]
 
 ## 使用する Claude のモデル
 
-モデル名は環境変数で指定し、文字起こし用と回答用を分けています。既定値は、実装時点（2026年11月）の公式のモデル一覧（Claude Fable 5.2／Claude Opus 5.5／Claude Sonnet 5.5／Claude Haiku 5.5）のうち、公式ドキュメントで「迷ったらまず使う」とされている **Claude Opus 5.5** です。
+モデル名は環境変数で指定し、文字起こし用と回答用を分けています。実装時点（2026年11月）の公式のモデル一覧（Claude Fable 5.2／Claude Opus 5.5／Claude Sonnet 5.5／Claude Haiku 5.5）から、次のように選んでいます。
+
+- **質問回答・指示の振り分け**：公式ドキュメントで「迷ったらまず使う」とされている **Claude Opus 5.5**
+- **文字起こし・要約**（写真・PDF の文字起こしと、添付ファイルの要約）：**Claude Sonnet 5.5**。Opus 5.5 の半額で、PDF・画像の読み取りと構造化出力にも対応しています
 
 | 用途 | 環境変数 | 既定値 | 思考の深さ（effort） |
 |---|---|---|---|
-| 文字起こし・要約 | `CLAUDE_MODEL_TRANSCRIBE` | `claude-opus-5-5` | `CLAUDE_EFFORT_TRANSCRIBE=medium` |
+| 文字起こし・要約 | `CLAUDE_MODEL_TRANSCRIBE` | `claude-sonnet-5-5` | `CLAUDE_EFFORT_TRANSCRIBE=medium` |
 | 質問回答 | `CLAUDE_MODEL_ANSWER` | `claude-opus-5-5` | `CLAUDE_EFFORT_ANSWER=medium` |
 | オーナーの指示の振り分け | `CLAUDE_MODEL_ANSWER` を使用 | 〃 | `CLAUDE_EFFORT_ROUTER=low` |
 
-- 料金の目安（100万トークンあたり、入力／出力）：Opus 5.5 は $4／$20、Sonnet 5.5 は $2／$10、Haiku 5.5 は $0.10〜／$0.50〜。画像やPDFが多い場合は、文字起こし用を `claude-sonnet-5-5` などに変えると費用を抑えられます（GitHub のリポジトリ変数 `CLAUDE_MODEL_TRANSCRIBE` を設定して再デプロイ）。
+- 料金の目安（100万トークンあたり、入力／出力）：Opus 5.5 は $4／$20、Sonnet 5.5 は $2／$10、Haiku 5.5 は $0.10〜／$0.50〜。
+- モデルを変えるときは、GitHub のリポジトリ変数 `CLAUDE_MODEL_TRANSCRIBE`（文字起こし・要約）や `CLAUDE_MODEL_ANSWER`（質問回答）を設定して再デプロイします（例：文字起こしを Opus 5.5 に戻すなら `CLAUDE_MODEL_TRANSCRIBE=claude-opus-5-5`）。リポジトリ変数を設定すると、上の既定値より優先されます。
 - 安全上の理由で応答が拒否された場合に、Anthropic が推奨するモデルで自動的にやり直す「サーバー側フォールバック」（ベータ機能）を有効にしています。使わない場合は `CLAUDE_FALLBACKS=off` にしてください。フォールバックに対応していないモデルを指定した場合は、自動的にフォールバック無しで呼び出します。
 
 ---
@@ -557,7 +561,7 @@ gcloud run services update "$SERVICE_NAME" --region="$REGION" --update-env-vars=
 
 | 変数名 | 既定値 | 内容 |
 |---|---|---|
-| `CLAUDE_MODEL_TRANSCRIBE` | `claude-opus-5-5` | 文字起こし・要約のモデル |
+| `CLAUDE_MODEL_TRANSCRIBE` | `claude-sonnet-5-5` | 文字起こし・要約のモデル |
 | `CLAUDE_MODEL_ANSWER` | `claude-opus-5-5` | 質問回答・指示の振り分けのモデル |
 | `CLAUDE_EFFORT_TRANSCRIBE` / `CLAUDE_EFFORT_ANSWER` / `CLAUDE_EFFORT_ROUTER` | `medium` / `medium` / `low` | 思考の深さ（`low` `medium` `high` `xhigh` `max`） |
 | `CLAUDE_FALLBACKS` | `default` | 拒否時のサーバー側フォールバック（使わないなら `off`） |
