@@ -5,7 +5,7 @@
   フォールバック（fallbacks: "default"）を既定で有効にしている。
   （CLAUDE_FALLBACKS=off で無効化。フォールバック非対応のモデルで 400 が返った
   場合は、自動的にフォールバック無しで再試行する）
-* 思考（thinking）は指定しない＝各モデルの既定（Claude Opus 5.5 では常に有効な
+* 思考（thinking）は指定しない＝各モデルの既定（Claude Opus 5.5・Claude Sonnet 5.5 では
   adaptive thinking）。深さは effort で調整する。
 """
 
